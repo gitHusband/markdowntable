@@ -1,0 +1,20 @@
+{
+    "message": {
+        "header": "Tips 消息内容",
+        "desc": "字符串，传入数组可换行, 同时支持DOM元素，jQuery元素",
+        "defaultValue": "空",
+        "options": [
+            "字符串",
+            "字符串数组",
+            "Dom 元素"
+        ]
+    },
+    "html": {
+        "param": false,
+        "isContainerTransparent": false
+    },
+    "baseElement": "",
+    "parentElement": "",
+    "direction": "inner",
+    "debug": true
+}
