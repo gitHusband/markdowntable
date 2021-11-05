@@ -1,0 +1,22 @@
+{
+    "baseElement": {
+        "header": "Tips 基准元素 ",
+        "desc": "Tips 定位的参照元素",
+        "defaultValue": "默认: 空值 ",
+        "options": [
+            "空值 - 代表Body元素",
+            "DOM 或 jQuery 元素 ",
+            "DOM 选择器"
+        ]
+    },
+    "offset": {
+        "top": {
+            "header": "偏移父元素Top 多少px",
+            "desc": "任意实数"
+        },
+        "left": {
+            "header": "T偏移父元素Left 多少px ",
+            "desc": "任意实数"
+        }
+    }
+}

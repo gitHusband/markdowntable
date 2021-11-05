@@ -11,7 +11,7 @@ import (
 // 目标：将 JSON 数据转换成 markdown 的表格
 
 // 用户自定义JSON 文件
-const jsonFile = "./test.json"
+const jsonFile = "./testeasy.json"
 
 // 声明这个类型主要是想给 []string 添加方法，方便调用而已
 type stringSlice []string
@@ -94,7 +94,7 @@ func (e *elementDetails) setup(x interface{}) {
 }
 
 // 根据详情内容生成 html 最后一列的内容
-func (e *elementDetails) generateHtml() string {
+func (e *elementDetails) generateDetailsHtml() string {
 	s := ""
 	if e.header != "" {
 		s += fmt.Sprintf("<strong>%v</strong> <br/> ", e.header)
@@ -122,6 +122,9 @@ var endElementKeys = endElementKeysStruct{
 	optional: stringSlice{"defaultValue", "options"},
 }
 
+// 最多有多少列
+var maxColspan int
+
 func main() {
 	var jsonMap map[string]interface{}
 
@@ -129,8 +132,11 @@ func main() {
 	jsonMap = readJsonFile(jsonFile)
 	fmt.Printf("%#v\n", jsonMap)
 
+	maxColspan = getMaxColspan(jsonMap) + 1
+	fmt.Printf("最大 maxColspan: %v\n", maxColspan)
+
 	// 遍历生成markdown 表格 字符串
-	rangeJson(jsonMap, "")
+	createMarkdownTable(jsonMap)
 }
 
 // 从文件中读取JSON
@@ -158,53 +164,8 @@ func readJsonFile(file string) map[string]interface{} {
 	return anyJson
 }
 
-// 遍历 JSON
-func rangeJson(anyJson map[string]interface{}, keyPath string) {
-	var keyList []string
-	// 将map数据遍历复制到切片中
-	for k := range anyJson {
-		keyList = append(keyList, k)
-	}
-	// 对切片进行排序
-	sort.Strings(keyList)
-
-	for _, key := range keyList {
-		var currentKeyPath string
-		if keyPath == "" {
-			currentKeyPath = key
-		} else {
-			currentKeyPath = keyPath + "." + key
-		}
-
-		anyJsonValue := anyJson[key]
-
-		if isEndElement(anyJsonValue, key) {
-			fmt.Printf("=== %v 是最终元素，%v\n", key, anyJsonValue)
-		} else {
-			fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
-			rangeJson(anyJsonValue.(map[string]interface{}), currentKeyPath)
-		}
-
-		elmDetails := new(elementDetails)
-		elmDetails.setup(anyJsonValue)
-		fmt.Printf("### elmDetails: %#v\n", elmDetails)
-		s := elmDetails.generateHtml()
-		fmt.Printf("*** elmDetails HTML: %#v\n\n", s)
-
-		// switch anyJsonValue.(type) {
-		// case map[string]interface{}:
-		// 	elmDetails.setup(anyJsonValue)
-		// 	fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
-		// case string, int, bool:
-
-		// default:
-		// 	fmt.Printf("%v: %v\n", currentKeyPath, anyJson[key])
-		// }
-	}
-}
-
 // 判断某个JSON 元素是否是 最终元素
-func isEndElement(x interface{}, key string) bool {
+func isEndElement(x interface{}) bool {
 	m, ok := x.(map[string]interface{})
 
 	// 如果不是 x.(map[string]interface{} 类型，比如是字符串，则认为是最终元素
@@ -232,6 +193,7 @@ func isEndElement(x interface{}, key string) bool {
 	return true
 }
 
+// 获取map 所有的key
 func getMapKeys(m map[string]interface{}) stringSlice {
 	keys := make(stringSlice, 0)
 	for k, _ := range m {
@@ -247,4 +209,123 @@ func getEmptyInterfaceKeys(x interface{}) stringSlice {
 	}
 
 	return getMapKeys(m)
+}
+
+func createMarkdownTable(anyJson map[string]interface{}) string {
+	createTableBody(anyJson)
+
+	return ""
+}
+
+func createTableBody(anyJson map[string]interface{}) {
+	createTableTr(anyJson, maxColspan, "")
+}
+
+func createTableTr(anyJson map[string]interface{}, colspan int, keyPath string) {
+	var keyList []string
+	// 将map数据遍历复制到切片中
+	for k := range anyJson {
+		keyList = append(keyList, k)
+	}
+	// 对切片进行排序
+	sort.Strings(keyList)
+
+	var tr []string
+
+	for _, key := range keyList {
+		currentColspan := colspan - 1
+
+		var currentKeyPath string
+		if keyPath == "" {
+			currentKeyPath = key
+		} else {
+			currentKeyPath = keyPath + "." + key
+		}
+
+		td := createTableTd(key, 1)
+		tr = append(tr, td)
+
+		anyJsonValue := anyJson[key]
+
+		if isEndElement(anyJsonValue) {
+			fmt.Printf("=== %v 是最终元素，%v\n", key, anyJsonValue)
+
+			elmDetails := new(elementDetails)
+			elmDetails.setup(anyJsonValue)
+			// fmt.Printf("### elmDetails: %#v\n", elmDetails)
+			details := elmDetails.generateDetailsHtml()
+			// fmt.Printf("*** elmDetails HTML: %#v\n\n", details)
+			td := createTableTd(details, currentColspan)
+			fmt.Printf("*** %v - td HTML: %#v\n\n", currentKeyPath, td)
+			tr = append(tr, td)
+		} else {
+			fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
+			createTableTr(anyJsonValue.(map[string]interface{}), currentColspan, currentKeyPath)
+		}
+
+		// switch anyJsonValue.(type) {
+		// case map[string]interface{}:
+		// 	elmDetails.setup(anyJsonValue)
+		// 	fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
+		// case string, int, bool:
+
+		// default:
+		// 	fmt.Printf("%v: %v\n", currentKeyPath, anyJson[key])
+		// }
+	}
+}
+
+func createTableTd(content string, colspan int) string {
+	var td string
+	if colspan > 1 {
+		td = fmt.Sprintf("<td colspan=\"%d\">%s</td>", colspan, content)
+	} else {
+		td = fmt.Sprintf("<td>%s</td>", content)
+	}
+
+	return td
+}
+
+func createTableHeader() {
+
+}
+
+// 获取整个表格最大有多少列
+func getMaxColspan(jsonData map[string]interface{}) int {
+	maxColspan := 1
+	for _, v := range jsonData {
+		curColspan := 1
+		if isEndElement(v) {
+			curColspan = 1
+		} else {
+			curColspan += getMaxColspan(v.(map[string]interface{}))
+		}
+
+		if curColspan > maxColspan {
+			maxColspan = curColspan
+		}
+	}
+
+	return maxColspan
+}
+
+func getColspan() {
+
+}
+
+// 获取当前字段有多少个子字段，即当前字段占几行
+func getRowspan(jsonData map[string]interface{}) int {
+	rowspan := 0
+	for _, v := range jsonData {
+		curRowspan := 1
+		if isEndElement(v) {
+			curRowspan = 1
+		} else {
+			curRowspan += getRowspan(v.(map[string]interface{}))
+		}
+
+		rowspan += curRowspan
+	}
+
+	return rowspan
 }

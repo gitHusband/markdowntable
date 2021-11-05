@@ -13,8 +13,37 @@
         "param": false,
         "isContainerTransparent": false
     },
-    "baseElement": "",
-    "parentElement": "",
     "direction": "inner",
-    "debug": true
+    "symbolOptions": {
+        "type": {
+            "header": "如果不设置，symbol则按option.type 色调，否则按该参数的色调",
+            "desc": "",
+            "defaultValue": "默认: info ",
+            "options": [
+                "normal",
+                "success",
+                "error"
+            ]
+        },
+        "position": {
+            "header": "symbol与Tips的相对定位",
+            "desc": "",
+            "defaultValue": "默认: info ",
+            "options": [
+                "top-left",
+                "top-center",
+                "top-right "
+            ]
+        },
+        "offset": {
+            "top": {
+                "header": "偏移Tips元素Top 多少px(暂不支持) ",
+                "desc": "任意实数"
+            },
+            "left": {
+                "header": "偏移Tips元素Top 多少px(暂不支持) ",
+                "desc": "任意实数"
+            }
+        }
+    }
 }
