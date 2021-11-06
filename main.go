@@ -80,10 +80,8 @@ func (e *elementDetails) setup(x interface{}) {
 			}
 		}
 
-		if v, ok := m["options"]; ok {
-			if s, ok := v.([]string); ok {
-				e.options = s
-			}
+		if _, ok := m["options"]; ok {
+			// e.options = getJsonSlice(m["options"])
 		}
 	} else if v, ok := x.(string); ok {
 		e.header = v
@@ -100,19 +98,19 @@ func (e *elementDetails) setup(x interface{}) {
 func (e *elementDetails) generateDetailsHtml() string {
 	s := ""
 	if e.header != "" {
-		s += fmt.Sprintf("<strong>%v</strong> <br/> ", e.header)
+		s += fmt.Sprintf("<br/> <strong>%v</strong>", e.header)
 	}
 
 	if e.desc != "" {
-		s += fmt.Sprintf("<p>%v</p> <br/>", e.desc)
+		s += fmt.Sprintf("<br/> <div>%v</div>", e.desc)
 	}
 
 	if e.defaultValue != "" {
-		s += fmt.Sprintf("<p>%v</p> <br/>", e.defaultValue)
+		s += fmt.Sprintf("<br/> <div>%v</div>", e.defaultValue)
 	}
 
 	for _, v := range e.options {
-		s += fmt.Sprintf("<p>%v</p> <br/>", v)
+		s += fmt.Sprintf("<br/> <div>%v</div>", v)
 	}
 
 	return s
@@ -127,6 +125,8 @@ var endElementKeys = endElementKeysStruct{
 
 // 最多有多少列
 var maxColspan int
+
+// 保存每一行的所有列
 var trs trSlice
 
 func main() {
@@ -197,6 +197,25 @@ func isEndElement(x interface{}) bool {
 	return true
 }
 
+// JSON 数组会被转换成 []interface 类型
+// 所以需要将其转换成 []string 类型
+func getJsonSlice(js interface{}) stringSlice {
+	var options stringSlice
+
+	switch js.(type) {
+	case string, int:
+		options = append(options, js.(string))
+	case []interface{}:
+		for _, v := range js.([]interface{}) {
+			options = append(options, v.(string))
+		}
+	default:
+		panic("options must be slice, string, int")
+	}
+
+	return options
+}
+
 // 获取map 所有的key
 func getMapKeys(m map[string]interface{}) stringSlice {
 	keys := make(stringSlice, 0)
@@ -206,6 +225,7 @@ func getMapKeys(m map[string]interface{}) stringSlice {
 	return keys
 }
 
+// 如果空接口 是实际类型 是 map, 获取它所有的key
 func getEmptyInterfaceKeys(x interface{}) stringSlice {
 	m, ok := x.(map[string]interface{})
 	if !ok {
@@ -215,6 +235,7 @@ func getEmptyInterfaceKeys(x interface{}) stringSlice {
 	return getMapKeys(m)
 }
 
+// 获取map 所有的key，并按字母排序
 func getSortMapKeys(m map[string]interface{}) stringSlice {
 	keys := getMapKeys(m)
 	// 对切片进行排序
@@ -223,32 +244,100 @@ func getSortMapKeys(m map[string]interface{}) stringSlice {
 	return keys
 }
 
+// 创建 Markdown 表格
 func createMarkdownTable(jsonData map[string]interface{}) string {
-	createTableBody(jsonData)
+	headerHtml := createTableHeader()
+	bodyHtml := createTableBody(jsonData)
 
-	return ""
+	tableHtml := fmt.Sprintf("<table>\n%v%v</table>\n", headerHtml, bodyHtml)
+
+	fmt.Printf("\n%v\n", tableHtml)
+
+	return tableHtml
 }
 
-func createTableBody(jsonData map[string]interface{}) {
-	createTableTr(jsonData, maxColspan, "")
+// 创建 表格头
+func createTableHeader() string {
+	var headerHtml string
+	for i := 0; i < maxColspan; i++ {
+		var thHtml string
+		var thContent string
+
+		if i == 0 {
+			thContent = "参数"
+		} else if i == maxColspan-1 {
+			thContent = "释义"
+		} else {
+			thContent = "子参"
+		}
+
+		thHtml += fmt.Sprintf("\t<th>%v</th>\n", thContent)
+
+		headerHtml += thHtml
+	}
+	headerHtml = fmt.Sprintf("<thead>\n%v</thead>\n", headerHtml)
+
+	return headerHtml
 }
 
-func createTableTr(jsonData map[string]interface{}, colspan int, keyPath string) {
+// 创建 表格内容
+func createTableBody(jsonData map[string]interface{}) string {
+	var bodyHtml string
+	setTableTr(jsonData, maxColspan, 0, "")
+	trsHtml := createTableTrHtml()
+	bodyHtml += fmt.Sprintf("<tbody>\n%v</tbody>\n", trsHtml)
+
+	return bodyHtml
+}
+
+// 创建 表格行
+func createTableTrHtml() string {
+	var trsHtml string
+
+	for _, tr := range trs {
+		var trHtml string
+		trHtml += fmt.Sprintf("\t<tr>\n")
+
+		for _, td := range tr {
+			trHtml += fmt.Sprintf("\t\t%v\n", td)
+		}
+
+		trHtml += fmt.Sprintf("\t</tr>\n")
+
+		trsHtml += trHtml
+	}
+
+	return trsHtml
+}
+
+// 递归 JSON 数据，生成每一行的html 并保存到全局变量 trs
+func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath string) {
+	// fmt.Printf("当前JOSN data: %#v\n", jsonData)
 	keys := getSortMapKeys(jsonData)
 
 	keysLen := len(keys)
 	keyOffset := maxColspan - colspan
-	fmt.Printf("@@@ 最大列数是：%v， 当前列数是: %v, keyOffset 是：%v, keysLen 是：%v\n", maxColspan, colspan, keyOffset, keysLen)
+	currentColspan := colspan - depth - 1
+	// fmt.Printf("@@@ 最大列数是：%v， 当前列数是: %v, keyOffset 是：%v, keysLen 是：%v\n", maxColspan, colspan, keyOffset, keysLen)
+
+	var currentKeyPath string
+
+	if keyOffset > 0 && !isEndElement(jsonData[keys[keyOffset-1]]) {
+		if keyPath == "" {
+			currentKeyPath = keys[keyOffset-1]
+		} else {
+			currentKeyPath = keyPath + "." + keys[keyOffset-1]
+		}
+		setTableTr(jsonData[keys[keyOffset-1]].(map[string]interface{}), colspan, depth+1, currentKeyPath)
+	}
 
 	// for _, key := range keys {
 	for i := keyOffset; i < keysLen; i++ {
-		var tds tdSlice
+		var tr tdSlice
 		var td string
 
 		currentKey := keys[i]
-		currentColspan := colspan - 1
 
-		var currentKeyPath string
 		if keyPath == "" {
 			currentKeyPath = currentKey
 		} else {
@@ -258,42 +347,43 @@ func createTableTr(jsonData map[string]interface{}, colspan int, keyPath string)
 		jsonDataValue := jsonData[currentKey]
 
 		if isEndElement(jsonDataValue) {
-			// fmt.Printf("=== 这是最终元素 - %v：%#v\n", currentKeyPath, jsonDataValue)
-			fmt.Printf("=== 这是最终元素 - %v\n", currentKeyPath)
+			// fmt.Printf("=== 这是最终元素 - %v\n", currentKeyPath)
 
-			td = createTableTd(currentKey, 1, 1)
-			tds = append(tds, td)
+			td = createTableTdHtml(currentKey, 1, 1)
+			tr = append(tr, td)
 
 			elmDetails := new(elementDetails)
 			elmDetails.setup(jsonDataValue)
 			// fmt.Printf("### elmDetails: %#v\n", elmDetails)
 			details := elmDetails.generateDetailsHtml()
 			// fmt.Printf("*** elmDetails HTML: %#v\n\n", details)
-			td = createTableTd(details, currentColspan, 1)
+			td = createTableTdHtml(details, currentColspan, 1)
 			// fmt.Printf("*** %v - td HTML: %#v\n\n", currentKeyPath, td)
-			tds = append(tds, td)
-			fmt.Printf("$$$ tds - %v：%#v\n", currentKeyPath, tds)
+			tr = append(tr, td)
+			appendTrs(tr)
 
+			fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
 		} else {
-			// fmt.Printf("### 这不是最终元素 - %v：%#v\n", currentKeyPath, jsonDataValue)
-			fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
+			// fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
+			// fmt.Printf("### 所以需要先插入当前字段 %v，再一次性递归获取所有子字段的第一个字段\n", currentKey)
 
-			td = createTableTd(currentKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
-			tds = append(tds, td)
+			td = createTableTdHtml(currentKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
+			tr = append(tr, td)
 
-			fmt.Printf("### 所以需要先插入当前字段 %v，再一次性遍历获取所有子字段的第一个字段\n", currentKey)
 			firstColumns := getFirstColumns(jsonDataValue.(map[string]interface{}), currentColspan)
-			tds = append(tds, firstColumns...)
+			tr = append(tr, firstColumns...)
+			appendTrs(tr)
 
-			fmt.Printf("$$$ tds - %v：%#v\n", currentKeyPath, tds)
+			fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
 
-			createTableTr(jsonDataValue.(map[string]interface{}), currentColspan, currentKeyPath)
+			setTableTr(jsonDataValue.(map[string]interface{}), currentColspan, depth, currentKeyPath)
 		}
 
 	}
 }
 
-func createTableTd(content string, colspan int, rowspan int) string {
+// 创建 表格列
+func createTableTdHtml(content string, colspan int, rowspan int) string {
 	var td string
 	var colspanDetail string
 	var rowspanDetail string
@@ -311,8 +401,10 @@ func createTableTd(content string, colspan int, rowspan int) string {
 	return td
 }
 
-func createTableHeader() {
-
+// 插入全局变量 trs
+// trs - 保存每一行的所有列
+func appendTrs(tr tdSlice) {
+	trs = append(trs, tr)
 }
 
 // 获取整个表格最大有多少列
@@ -334,10 +426,6 @@ func getMaxColspan(jsonData map[string]interface{}) int {
 	return maxColspan
 }
 
-func getColspan() {
-
-}
-
 // 获取当前字段有多少个子字段，即当前字段占几行
 func getRowspan(jsonData map[string]interface{}) int {
 	rowspan := 0
@@ -355,6 +443,7 @@ func getRowspan(jsonData map[string]interface{}) int {
 	return rowspan
 }
 
+// 递归获取当前字段内第一个字段的td 的集合
 func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
 	var tds tdSlice
 	var td string
@@ -365,10 +454,9 @@ func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
 	jsonDataValue := jsonData[firstKey]
 
 	if isEndElement(jsonDataValue) {
-		// fmt.Printf("====== 这是最终元素 - %v：%#v\n", firstKey, jsonDataValue)
-		fmt.Printf("====== 这是最终元素 - %v\n", firstKey)
+		// fmt.Printf("====== 这是最终元素 - %v\n", firstKey)
 
-		td = createTableTd(firstKey, 1, 1)
+		td = createTableTdHtml(firstKey, 1, 1)
 		tds = append(tds, td)
 
 		elmDetails := new(elementDetails)
@@ -376,15 +464,14 @@ func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
 		// fmt.Printf("****** elmDetails: %#v\n", elmDetails)
 		details := elmDetails.generateDetailsHtml()
 		// fmt.Printf("****** elmDetails HTML: %#v\n\n", details)
-		td := createTableTd(details, colspan-1, 1)
+		td := createTableTdHtml(details, colspan-1, 1)
 		// fmt.Printf("****** %v - td HTML: %#v\n\n", firstKey, td)
 		tds = append(tds, td)
 	} else {
-		// fmt.Printf("###### 这不是最终元素 - %v：%#v\n", firstKey, jsonDataValue)
-		fmt.Printf("###### 这不是最终元素 - %v\n", firstKey)
-		fmt.Printf("###### 所以需要先插入当前字段 %v，再一次性遍历获取所有子字段的第一个字段\n", firstKey)
+		// fmt.Printf("###### 这不是最终元素 - %v\n", firstKey)
+		// fmt.Printf("###### 所以需要先插入当前字段 %v，再一次性递归获取所有子字段的第一个字段\n", firstKey)
 
-		td = createTableTd(firstKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
+		td = createTableTdHtml(firstKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
 		tds = append(tds, td)
 
 		nextTd := getFirstColumns(jsonDataValue.(map[string]interface{}), colspan-1)

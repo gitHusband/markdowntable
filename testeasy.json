@@ -33,7 +33,7 @@
         "position": {
             "header": "symbol与Tips的相对定位",
             "desc": "",
-            "defaultValue": "默认: info ",
+            "defaultValue": "默认: top-center",
             "options": [
                 "top-left",
                 "top-center",
