@@ -33,6 +33,9 @@ type elementDetails struct {
 	options      []string
 }
 
+type tdSlice []string
+type trSlice []tdSlice
+
 // 判断一个字符串切片中是否包含某个字符串
 func (ss stringSlice) include(s string) bool {
 	for _, val := range ss {
@@ -124,19 +127,20 @@ var endElementKeys = endElementKeysStruct{
 
 // 最多有多少列
 var maxColspan int
+var trs trSlice
 
 func main() {
-	var jsonMap map[string]interface{}
+	var jsonData map[string]interface{}
 
 	// 从文件中读取JSON
-	jsonMap = readJsonFile(jsonFile)
-	fmt.Printf("%#v\n", jsonMap)
+	jsonData = readJsonFile(jsonFile)
+	fmt.Printf("%#v\n", jsonData)
 
-	maxColspan = getMaxColspan(jsonMap) + 1
+	maxColspan = getMaxColspan(jsonData) + 1
 	fmt.Printf("最大 maxColspan: %v\n", maxColspan)
 
 	// 遍历生成markdown 表格 字符串
-	createMarkdownTable(jsonMap)
+	createMarkdownTable(jsonData)
 }
 
 // 从文件中读取JSON
@@ -211,77 +215,98 @@ func getEmptyInterfaceKeys(x interface{}) stringSlice {
 	return getMapKeys(m)
 }
 
-func createMarkdownTable(anyJson map[string]interface{}) string {
-	createTableBody(anyJson)
+func getSortMapKeys(m map[string]interface{}) stringSlice {
+	keys := getMapKeys(m)
+	// 对切片进行排序
+	sort.Strings(keys)
+
+	return keys
+}
+
+func createMarkdownTable(jsonData map[string]interface{}) string {
+	createTableBody(jsonData)
 
 	return ""
 }
 
-func createTableBody(anyJson map[string]interface{}) {
-	createTableTr(anyJson, maxColspan, "")
+func createTableBody(jsonData map[string]interface{}) {
+	createTableTr(jsonData, maxColspan, "")
 }
 
-func createTableTr(anyJson map[string]interface{}, colspan int, keyPath string) {
-	var keyList []string
-	// 将map数据遍历复制到切片中
-	for k := range anyJson {
-		keyList = append(keyList, k)
-	}
-	// 对切片进行排序
-	sort.Strings(keyList)
+func createTableTr(jsonData map[string]interface{}, colspan int, keyPath string) {
+	keys := getSortMapKeys(jsonData)
 
-	var tr []string
+	keysLen := len(keys)
+	keyOffset := maxColspan - colspan
+	fmt.Printf("@@@ 最大列数是：%v， 当前列数是: %v, keyOffset 是：%v, keysLen 是：%v\n", maxColspan, colspan, keyOffset, keysLen)
 
-	for _, key := range keyList {
+	// for _, key := range keys {
+	for i := keyOffset; i < keysLen; i++ {
+		var tds tdSlice
+		var td string
+
+		currentKey := keys[i]
 		currentColspan := colspan - 1
 
 		var currentKeyPath string
 		if keyPath == "" {
-			currentKeyPath = key
+			currentKeyPath = currentKey
 		} else {
-			currentKeyPath = keyPath + "." + key
+			currentKeyPath = keyPath + "." + currentKey
 		}
 
-		td := createTableTd(key, 1)
-		tr = append(tr, td)
+		jsonDataValue := jsonData[currentKey]
 
-		anyJsonValue := anyJson[key]
+		if isEndElement(jsonDataValue) {
+			// fmt.Printf("=== 这是最终元素 - %v：%#v\n", currentKeyPath, jsonDataValue)
+			fmt.Printf("=== 这是最终元素 - %v\n", currentKeyPath)
 
-		if isEndElement(anyJsonValue) {
-			fmt.Printf("=== %v 是最终元素，%v\n", key, anyJsonValue)
+			td = createTableTd(currentKey, 1, 1)
+			tds = append(tds, td)
 
 			elmDetails := new(elementDetails)
-			elmDetails.setup(anyJsonValue)
+			elmDetails.setup(jsonDataValue)
 			// fmt.Printf("### elmDetails: %#v\n", elmDetails)
 			details := elmDetails.generateDetailsHtml()
 			// fmt.Printf("*** elmDetails HTML: %#v\n\n", details)
-			td := createTableTd(details, currentColspan)
-			fmt.Printf("*** %v - td HTML: %#v\n\n", currentKeyPath, td)
-			tr = append(tr, td)
+			td = createTableTd(details, currentColspan, 1)
+			// fmt.Printf("*** %v - td HTML: %#v\n\n", currentKeyPath, td)
+			tds = append(tds, td)
+			fmt.Printf("$$$ tds - %v：%#v\n", currentKeyPath, tds)
+
 		} else {
-			fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
-			createTableTr(anyJsonValue.(map[string]interface{}), currentColspan, currentKeyPath)
+			// fmt.Printf("### 这不是最终元素 - %v：%#v\n", currentKeyPath, jsonDataValue)
+			fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
+
+			td = createTableTd(currentKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
+			tds = append(tds, td)
+
+			fmt.Printf("### 所以需要先插入当前字段 %v，再一次性遍历获取所有子字段的第一个字段\n", currentKey)
+			firstColumns := getFirstColumns(jsonDataValue.(map[string]interface{}), currentColspan)
+			tds = append(tds, firstColumns...)
+
+			fmt.Printf("$$$ tds - %v：%#v\n", currentKeyPath, tds)
+
+			createTableTr(jsonDataValue.(map[string]interface{}), currentColspan, currentKeyPath)
 		}
 
-		// switch anyJsonValue.(type) {
-		// case map[string]interface{}:
-		// 	elmDetails.setup(anyJsonValue)
-		// 	fmt.Printf("+++ %v: %v\n", currentKeyPath, anyJsonValue)
-		// case string, int, bool:
-
-		// default:
-		// 	fmt.Printf("%v: %v\n", currentKeyPath, anyJson[key])
-		// }
 	}
 }
 
-func createTableTd(content string, colspan int) string {
+func createTableTd(content string, colspan int, rowspan int) string {
 	var td string
+	var colspanDetail string
+	var rowspanDetail string
+
 	if colspan > 1 {
-		td = fmt.Sprintf("<td colspan=\"%d\">%s</td>", colspan, content)
-	} else {
-		td = fmt.Sprintf("<td>%s</td>", content)
+		colspanDetail = fmt.Sprintf(" colspan=\"%d\"", colspan)
 	}
+
+	if rowspan > 1 {
+		rowspanDetail = fmt.Sprintf(" rowspan=\"%d\"", rowspan)
+	}
+
+	td = fmt.Sprintf("<td%v%v>%s</td>", colspanDetail, rowspanDetail, content)
 
 	return td
 }
@@ -321,11 +346,50 @@ func getRowspan(jsonData map[string]interface{}) int {
 		if isEndElement(v) {
 			curRowspan = 1
 		} else {
-			curRowspan += getRowspan(v.(map[string]interface{}))
+			curRowspan = getRowspan(v.(map[string]interface{}))
 		}
 
 		rowspan += curRowspan
 	}
 
 	return rowspan
+}
+
+func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
+	var tds tdSlice
+	var td string
+
+	keys := getSortMapKeys(jsonData)
+	firstKey := keys[0]
+
+	jsonDataValue := jsonData[firstKey]
+
+	if isEndElement(jsonDataValue) {
+		// fmt.Printf("====== 这是最终元素 - %v：%#v\n", firstKey, jsonDataValue)
+		fmt.Printf("====== 这是最终元素 - %v\n", firstKey)
+
+		td = createTableTd(firstKey, 1, 1)
+		tds = append(tds, td)
+
+		elmDetails := new(elementDetails)
+		elmDetails.setup(jsonDataValue)
+		// fmt.Printf("****** elmDetails: %#v\n", elmDetails)
+		details := elmDetails.generateDetailsHtml()
+		// fmt.Printf("****** elmDetails HTML: %#v\n\n", details)
+		td := createTableTd(details, colspan-1, 1)
+		// fmt.Printf("****** %v - td HTML: %#v\n\n", firstKey, td)
+		tds = append(tds, td)
+	} else {
+		// fmt.Printf("###### 这不是最终元素 - %v：%#v\n", firstKey, jsonDataValue)
+		fmt.Printf("###### 这不是最终元素 - %v\n", firstKey)
+		fmt.Printf("###### 所以需要先插入当前字段 %v，再一次性遍历获取所有子字段的第一个字段\n", firstKey)
+
+		td = createTableTd(firstKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
+		tds = append(tds, td)
+
+		nextTd := getFirstColumns(jsonDataValue.(map[string]interface{}), colspan-1)
+		tds = append(tds, nextTd...)
+	}
+
+	return tds
 }
