@@ -13,6 +13,7 @@ import (
 )
 
 // 目标：将 JSON 数据转换成 markdown 的表格
+// 使用方法：markdowntable [-in jsonFilePath] [-out markdownFilePath]
 
 // 声明这个类型主要是想给 []string 添加方法，方便调用而已
 type stringSlice []string
@@ -21,7 +22,7 @@ type stringSlice []string
 // 并且将这些字段的值组合成元素的详情，也就是 html 表格的最后一列 - 详情
 // 1. required - 必须包含这些字段的元素才能认为是最终元素
 // 2. optional - 这些字段是可选的
-// 2. 如果包含额外的字段，则不能将其认作为 最终元素
+// 3. 如果包含额外的字段，则不能将其认作为 最终元素
 type endElementKeysStruct struct {
 	required stringSlice
 	optional stringSlice
@@ -157,7 +158,7 @@ func main() {
 	jsonData = readJsonFile(jsonFile)
 	// fmt.Printf("Json 数据：%#v\n", jsonData)
 
-	maxColspan = getMaxColspan(jsonData) + 1
+	maxColspan = getMaxColspan(jsonData)
 	// fmt.Printf("最大 maxColspan: %v\n", maxColspan)
 
 	// 遍历生成markdown 表格 字符串
@@ -165,6 +166,7 @@ func main() {
 
 	// fmt.Printf("\n%v\n", markdownTable)
 
+	// 输出 markdown 文件
 	writeMarkdownFile(markdownTable, markdownFile)
 }
 
@@ -256,14 +258,14 @@ func getJsonSlice(js interface{}) stringSlice {
 	var options stringSlice
 
 	switch js.(type) {
-	case string, int:
-		options = append(options, js.(string))
+	case string, int, bool:
+		options = append(options, fmt.Sprintf("%v", js))
 	case []interface{}:
 		for _, v := range js.([]interface{}) {
-			options = append(options, v.(string))
+			options = append(options, fmt.Sprintf("%v", v))
 		}
 	default:
-		panic("options must be slice, string, int")
+		panic("options must be slice, string, int, bool")
 	}
 
 	return options
@@ -363,6 +365,11 @@ func createTableTrHtml() string {
 }
 
 // 递归 JSON 数据，生成每一行的html 并保存到全局变量 trs
+// 遍历当前 jsonData 的所有key 生成 <tr>s
+// 1. 如果是最终元素，则取key生成参数名<td>, key值生成详情<td>，合并tds 生成一个 <tr>
+// 2. 如果不是最终元素
+//   2.1 一次性遍历获取 key的值(jsonData2) 内的所有的第一个子元素生成参数名<td>(s), 最后一个key值生成详情<td>，合并<td>s 生成一个 <tr>
+//   2.2 递归遍历 key的值(jsonData2) 的所有key(排除第一个key) 生成 <tr>s
 func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath string) {
 	// fmt.Printf("当前JOSN data: %#v\n", jsonData)
 	keys := getSortMapKeys(jsonData)
@@ -419,6 +426,7 @@ func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath
 			// fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
 			// fmt.Printf("### 所以需要先插入当前字段 %v，再一次性递归获取所有子字段的第一个字段\n", currentKey)
 
+			// 递归获取key 值内的所有的第一个子元素生成参数名<td>, 最后一个key值生成详情<td>
 			td = createTableTdHtml(currentKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
 			tr = append(tr, td)
 
@@ -461,35 +469,31 @@ func appendTrs(tr tdSlice) {
 
 // 获取整个表格最大有多少列
 func getMaxColspan(jsonData map[string]interface{}) int {
-	maxColspan := 1
+	colspan := 1
 	for _, v := range jsonData {
 		curColspan := 1
 		if isEndElement(v) {
-			curColspan = 1
+			curColspan = 2
 		} else {
 			curColspan += getMaxColspan(v.(map[string]interface{}))
 		}
 
-		if curColspan > maxColspan {
-			maxColspan = curColspan
+		if curColspan > colspan {
+			colspan = curColspan
 		}
 	}
-
-	return maxColspan
+	return colspan
 }
 
 // 获取当前字段有多少个子字段，即当前字段占几行
 func getRowspan(jsonData map[string]interface{}) int {
 	rowspan := 0
 	for _, v := range jsonData {
-		curRowspan := 1
 		if isEndElement(v) {
-			curRowspan = 1
+			rowspan += 1
 		} else {
-			curRowspan = getRowspan(v.(map[string]interface{}))
+			rowspan += getRowspan(v.(map[string]interface{}))
 		}
-
-		rowspan += curRowspan
 	}
 
 	return rowspan
