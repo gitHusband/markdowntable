@@ -1,17 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // 目标：将 JSON 数据转换成 markdown 的表格
 
-// 用户自定义JSON 文件
-const jsonFile = "./testeasy.json"
+// 默认的用户自定义JSON 文件
+const defaultJsonFile = "./testeasy.json"
 
 // 声明这个类型主要是想给 []string 添加方法，方便调用而已
 type stringSlice []string
@@ -81,7 +84,7 @@ func (e *elementDetails) setup(x interface{}) {
 		}
 
 		if _, ok := m["options"]; ok {
-			// e.options = getJsonSlice(m["options"])
+			e.options = getJsonSlice(m["options"])
 		}
 	} else if v, ok := x.(string); ok {
 		e.header = v
@@ -98,19 +101,23 @@ func (e *elementDetails) setup(x interface{}) {
 func (e *elementDetails) generateDetailsHtml() string {
 	s := ""
 	if e.header != "" {
-		s += fmt.Sprintf("<br/> <strong>%v</strong>", e.header)
+		s += fmt.Sprintf("<strong style=\"font-size: 15px\">%v</strong>", e.header)
 	}
 
 	if e.desc != "" {
-		s += fmt.Sprintf("<br/> <div>%v</div>", e.desc)
+		s += fmt.Sprintf("<br/> <em style=\"color: #888888\">%v</em>", e.desc)
 	}
 
 	if e.defaultValue != "" {
-		s += fmt.Sprintf("<br/> <div>%v</div>", e.defaultValue)
+		s += fmt.Sprintf("<br/> <b>默认：<ins>%v</ins></b>", e.defaultValue)
 	}
 
-	for _, v := range e.options {
-		s += fmt.Sprintf("<br/> <div>%v</div>", v)
+	if e.options != nil {
+		s += "<br/> <b>可能的值：</b> <ul>"
+		for _, v := range e.options {
+			s += fmt.Sprintf("<li>%v</li>", v)
+		}
+		s += "</ul>"
 	}
 
 	return s
@@ -132,20 +139,26 @@ var trs trSlice
 func main() {
 	var jsonData map[string]interface{}
 
+	jsonFile := defaultJsonFile
+
 	// 从文件中读取JSON
 	jsonData = readJsonFile(jsonFile)
-	fmt.Printf("%#v\n", jsonData)
+	// fmt.Printf("Json 数据：%#v\n", jsonData)
 
 	maxColspan = getMaxColspan(jsonData) + 1
-	fmt.Printf("最大 maxColspan: %v\n", maxColspan)
+	// fmt.Printf("最大 maxColspan: %v\n", maxColspan)
 
 	// 遍历生成markdown 表格 字符串
-	createMarkdownTable(jsonData)
+	markdownTable := createMarkdownTable(jsonData)
+
+	// fmt.Printf("\n%v\n", markdownTable)
+
+	writeMarkdownFile(markdownTable, jsonFile)
 }
 
 // 从文件中读取JSON
-func readJsonFile(file string) map[string]interface{} {
-	filePtr, err := os.Open(jsonFile)
+func readJsonFile(jsonFilePath string) map[string]interface{} {
+	filePtr, err := os.Open(jsonFilePath)
 	if err != nil {
 		fmt.Printf("文件打开失败 [Err: %s]\n", err.Error())
 		return nil
@@ -160,12 +173,43 @@ func readJsonFile(file string) map[string]interface{} {
 
 	if err != nil {
 		fmt.Printf("解码失败 [Err: %s]\n", err.Error())
-		return nil
-	} else {
-		fmt.Println("解码成功")
+		os.Exit(0)
 	}
 
 	return anyJson
+}
+
+// 将 markdown 表格字符串写入文件
+// 文件名是 json文件名 + “.md”
+func writeMarkdownFile(tableHtml string, jsonFilePath string) {
+	filePath := getFullFilePathWithoutSuffix(jsonFilePath)
+	filePath += ".md"
+
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Printf("打开文件错误\n\t %v\n", err)
+		fmt.Printf("Markdown 数据：\n%v", tableHtml)
+		return
+	}
+
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	writer.WriteString(tableHtml)
+	writer.Flush()
+	fmt.Printf("成功创建 Markdown 表格文件：%v\n", filePath)
+}
+
+func getFullFilePathWithoutSuffix(filePath string) string {
+	var fileNameWithSuffix string
+	fileNameWithSuffix = path.Base(filePath)
+	var fileSuffix string
+	fileSuffix = path.Ext(fileNameWithSuffix)
+
+	var filePathOnly string
+	filePathOnly = strings.TrimSuffix(filePath, fileSuffix)
+
+	return filePathOnly
 }
 
 // 判断某个JSON 元素是否是 最终元素
@@ -249,9 +293,8 @@ func createMarkdownTable(jsonData map[string]interface{}) string {
 	headerHtml := createTableHeader()
 	bodyHtml := createTableBody(jsonData)
 
-	tableHtml := fmt.Sprintf("<table>\n%v%v</table>\n", headerHtml, bodyHtml)
-
-	fmt.Printf("\n%v\n", tableHtml)
+	style := "style=\"width:100%\""
+	tableHtml := fmt.Sprintf("<table %v>\n%v%v</table>\n", style, headerHtml, bodyHtml)
 
 	return tableHtml
 }
@@ -362,7 +405,7 @@ func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath
 			tr = append(tr, td)
 			appendTrs(tr)
 
-			fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
+			// fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
 		} else {
 			// fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
 			// fmt.Printf("### 所以需要先插入当前字段 %v，再一次性递归获取所有子字段的第一个字段\n", currentKey)
@@ -374,7 +417,7 @@ func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath
 			tr = append(tr, firstColumns...)
 			appendTrs(tr)
 
-			fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
+			// fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
 
 			setTableTr(jsonDataValue.(map[string]interface{}), currentColspan, depth, currentKeyPath)
 		}
