@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path"
@@ -12,9 +13,6 @@ import (
 )
 
 // 目标：将 JSON 数据转换成 markdown 的表格
-
-// 默认的用户自定义JSON 文件
-const defaultJsonFile = "./testeasy.json"
 
 // 声明这个类型主要是想给 []string 添加方法，方便调用而已
 type stringSlice []string
@@ -136,10 +134,24 @@ var maxColspan int
 // 保存每一行的所有列
 var trs trSlice
 
+// 默认输入的用户JSON 文件
+const defaultJsonFile = "./testeasy.json"
+
+// 默认输出的 Markdown 文件
+const defaultMarkdownFile = ""
+
 func main() {
 	var jsonData map[string]interface{}
 
-	jsonFile := defaultJsonFile
+	var inputPath = flag.String("in", defaultJsonFile, "输入JSON文件的路径")
+	var outputPath = flag.String("out", defaultMarkdownFile, "输出Markdown文件的路径")
+	flag.Parse()
+
+	jsonFile := *inputPath
+	markdownFile := *outputPath
+	if markdownFile == "" {
+		markdownFile = getFullFilePathWithoutSuffix(jsonFile) + ".md"
+	}
 
 	// 从文件中读取JSON
 	jsonData = readJsonFile(jsonFile)
@@ -153,7 +165,7 @@ func main() {
 
 	// fmt.Printf("\n%v\n", markdownTable)
 
-	writeMarkdownFile(markdownTable, jsonFile)
+	writeMarkdownFile(markdownTable, markdownFile)
 }
 
 // 从文件中读取JSON
@@ -161,7 +173,7 @@ func readJsonFile(jsonFilePath string) map[string]interface{} {
 	filePtr, err := os.Open(jsonFilePath)
 	if err != nil {
 		fmt.Printf("文件打开失败 [Err: %s]\n", err.Error())
-		return nil
+		os.Exit(0)
 	}
 
 	defer filePtr.Close()
@@ -181,15 +193,12 @@ func readJsonFile(jsonFilePath string) map[string]interface{} {
 
 // 将 markdown 表格字符串写入文件
 // 文件名是 json文件名 + “.md”
-func writeMarkdownFile(tableHtml string, jsonFilePath string) {
-	filePath := getFullFilePathWithoutSuffix(jsonFilePath)
-	filePath += ".md"
-
-	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
+func writeMarkdownFile(tableHtml string, markdownFilePath string) {
+	file, err := os.OpenFile(markdownFilePath, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		fmt.Printf("打开文件错误\n\t %v\n", err)
 		fmt.Printf("Markdown 数据：\n%v", tableHtml)
-		return
+		fmt.Printf("打开文件错误\n\t %v\n", err)
+		os.Exit(0)
 	}
 
 	defer file.Close()
@@ -197,7 +206,7 @@ func writeMarkdownFile(tableHtml string, jsonFilePath string) {
 	writer := bufio.NewWriter(file)
 	writer.WriteString(tableHtml)
 	writer.Flush()
-	fmt.Printf("成功创建 Markdown 表格文件：%v\n", filePath)
+	fmt.Printf("成功创建 Markdown 表格文件：%v\n", markdownFilePath)
 }
 
 func getFullFilePathWithoutSuffix(filePath string) string {
