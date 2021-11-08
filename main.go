@@ -28,6 +28,7 @@ type endElementKeysStruct struct {
 	optional stringSlice
 }
 
+// 详情元素的结构，必须包含 endElementKeysStruct 的所有字段
 type elementDetails struct {
 	header       string
 	desc         string
@@ -77,9 +78,7 @@ func (e *elementDetails) setup(x interface{}) {
 		}
 
 		if v, ok := m["defaultValue"]; ok {
-			if s, ok := v.(string); ok {
-				e.defaultValue = s
-			}
+			e.defaultValue = fmt.Sprint(v)
 		}
 
 		if _, ok := m["options"]; ok {
@@ -136,7 +135,7 @@ var maxColspan int
 var trs trSlice
 
 // 默认输入的用户JSON 文件
-const defaultJsonFile = "./testeasy.json"
+const defaultJsonFile = "./info.json"
 
 // 默认输出的 Markdown 文件
 const defaultMarkdownFile = ""
@@ -337,7 +336,7 @@ func createTableHeader() string {
 // 创建 表格内容
 func createTableBody(jsonData map[string]interface{}) string {
 	var bodyHtml string
-	setTableTr(jsonData, maxColspan, 0, "")
+	setTableTr(jsonData, "", maxColspan, 0)
 	trsHtml := createTableTrHtml()
 	bodyHtml += fmt.Sprintf("<tbody>\n%v</tbody>\n", trsHtml)
 
@@ -370,32 +369,64 @@ func createTableTrHtml() string {
 // 2. 如果不是最终元素
 //   2.1 一次性遍历获取 key的值(jsonData2) 内的所有的第一个子元素生成参数名<td>(s), 最后一个key值生成详情<td>，合并<td>s 生成一个 <tr>
 //   2.2 递归遍历 key的值(jsonData2) 的所有key(排除第一个key) 生成 <tr>s
-func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath string) {
-	// fmt.Printf("当前JOSN data: %#v\n", jsonData)
-	keys := getSortMapKeys(jsonData)
+// 3. 如果不是首次递归，那应当判断当前遍历JSON 数据的第一个字元素是否是最终数据，如果不是，那么必须遍历着第一个子元素的所有key 生成 <tr>s（原因是 2.1）
+// parentJsonData: 父JSON 数据，不是当前需要遍历的数据
+// keyPath: 当前要遍历的 key 完整路径。比如 a.b.c。那么当前要遍历的JSON 数据是 parentJsonData["c"]
+// colspan：表示当前的keyPath 对应的是 表格 的第几（maxColspan-colspan+1）列。
+// depth: 用于补算当前行详情所占列数（colspan）。原因是 2.1
+func setTableTr(parentJsonData map[string]interface{}, keyPath string, colspan int, depth int) {
+	// 获取即将要 遍历的 父JSON 的key， 根据 key 获取要遍历的JSON数据
+	currentKey := getCurrentKeyFromKeyPath(keyPath)
 
-	keysLen := len(keys)
-	keyOffset := maxColspan - colspan
+	// 当前要遍历的JSON数据
+	var jsonData map[string]interface{}
+
+	// 根据 父JSON 和 keyPath 获取当前需要遍历的JSON数据
+	// 注意：第一次遍历，keyPath 为空
+	if currentKey == "" {
+		jsonData = parentJsonData
+	} else {
+		jsonData = parentJsonData[currentKey].(map[string]interface{})
+	}
+	// fmt.Printf("当前JOSN data: %#v\n", jsonData)
+
+	// 获取当前遍历JSON的所有 key
+	childKeys := getSortMapKeys(jsonData)
+	// fmt.Printf("$ childKeys: %v\n", childKeys)
+
+	// 获取当前遍历JSON的所有 key 的长度，用于遍历
+	keysLen := len(childKeys)
+
+	var keyOffset int
+	// 如果要遍历的 JSON 数据不是根JSON数据，那么它的第一个子元素已经被插入<td>了，无需再次插入
+	// 见 getFirstColumns 方法
+	if maxColspan > colspan {
+		keyOffset = 1
+	} else {
+		keyOffset = 0
+	}
+
+	// 当前行详情所占列数
 	currentColspan := colspan - depth - 1
 	// fmt.Printf("@@@ 最大列数是：%v， 当前列数是: %v, keyOffset 是：%v, keysLen 是：%v\n", maxColspan, colspan, keyOffset, keysLen)
 
 	var currentKeyPath string
 
-	if keyOffset > 0 && !isEndElement(jsonData[keys[keyOffset-1]]) {
+	//如果不是首次递归，那应当判断当前遍历JSON 数据的第一个字元素是否是最终数据，如果不是，那么必须遍历着第一个子元素的所有key 生成 <tr>s
+	if keyOffset > 0 && !isEndElement(jsonData[childKeys[0]]) {
 		if keyPath == "" {
-			currentKeyPath = keys[keyOffset-1]
+			currentKeyPath = childKeys[0]
 		} else {
-			currentKeyPath = keyPath + "." + keys[keyOffset-1]
+			currentKeyPath = keyPath + "." + childKeys[0]
 		}
-		setTableTr(jsonData[keys[keyOffset-1]].(map[string]interface{}), colspan, depth+1, currentKeyPath)
+		setTableTr(jsonData, currentKeyPath, colspan, depth+1)
 	}
 
-	// for _, key := range keys {
 	for i := keyOffset; i < keysLen; i++ {
 		var tr tdSlice
 		var td string
 
-		currentKey := keys[i]
+		currentKey := childKeys[i]
 
 		if keyPath == "" {
 			currentKeyPath = currentKey
@@ -426,17 +457,18 @@ func setTableTr(jsonData map[string]interface{}, colspan int, depth int, keyPath
 			// fmt.Printf("### 这不是最终元素 - %v\n", currentKeyPath)
 			// fmt.Printf("### 所以需要先插入当前字段 %v，再一次性递归获取所有子字段的第一个字段\n", currentKey)
 
-			// 递归获取key 值内的所有的第一个子元素生成参数名<td>, 最后一个key值生成详情<td>
+			// 当前字段生成<td>
 			td = createTableTdHtml(currentKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
 			tr = append(tr, td)
 
+			// 递归获取key 值内的所有的第一个子元素生成参数名<td>, 最后一个key值生成详情<td>
 			firstColumns := getFirstColumns(jsonDataValue.(map[string]interface{}), currentColspan)
 			tr = append(tr, firstColumns...)
 			appendTrs(tr)
 
 			// fmt.Printf("$$$ tds - %v：%#v\n\n", currentKeyPath, tr)
 
-			setTableTr(jsonDataValue.(map[string]interface{}), currentColspan, depth, currentKeyPath)
+			setTableTr(jsonData, currentKeyPath, currentColspan, depth)
 		}
 
 	}
@@ -535,4 +567,10 @@ func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
 	}
 
 	return tds
+}
+
+// 获取keyPath 的最终key, 比如 keyPath是 a.b.c，则获取 c
+func getCurrentKeyFromKeyPath(keyPath string) string {
+	keySlice := strings.Split(keyPath, ".")
+	return keySlice[len(keySlice)-1]
 }
