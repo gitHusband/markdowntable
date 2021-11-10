@@ -298,13 +298,27 @@ func getSortMapKeys(m map[string]interface{}) stringSlice {
 	return keys
 }
 
+func createCss() string {
+	css := `<style>
+	table th,
+	table td {
+		border:1px solid black;
+	}
+</style>
+`
+
+	return css
+}
+
 // 创建 Markdown 表格
 func createMarkdownTable(jsonData map[string]interface{}) string {
 	headerHtml := createTableHeader()
 	bodyHtml := createTableBody(jsonData)
 
+	css := createCss()
+
 	style := "style=\"width:100%\""
-	tableHtml := fmt.Sprintf("<table %v>\n%v%v</table>\n", style, headerHtml, bodyHtml)
+	tableHtml := fmt.Sprintf("%v<table %v>\n%v%v</table>\n", css, style, headerHtml, bodyHtml)
 
 	return tableHtml
 }
@@ -349,7 +363,7 @@ func createTableTrHtml() string {
 
 	for _, tr := range trs {
 		var trHtml string
-		trHtml += fmt.Sprintf("\t<tr>\n")
+		trHtml += fmt.Sprintf("\t<tr align=\"left\">\n")
 
 		for _, td := range tr {
 			trHtml += fmt.Sprintf("\t\t%v\n", td)
