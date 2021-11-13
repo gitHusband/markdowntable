@@ -7,7 +7,7 @@
 ## 1. 使用方法
 
 ```
-./markdowntable [-in jsonFilePath] [-out markdownFilePath]
+./markdowntable [-in jsonFilePath] [-out markdownFilePath] [-sort default]
 
 选项：
   in: 输入JSON 文件，默认 "./info.json"
