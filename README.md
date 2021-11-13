@@ -12,6 +12,10 @@
 选项：
   in: 输入JSON 文件，默认 "./info.json"
   out: 输出 markdown 文件，默认 "./info.md"
+  sort: 字段排序方式
+      - default：默认按JSON原本字段顺序。
+      - asc：递增排序
+      - desc：递减排序
 ```
 > 支持 MacOS, Linux 和 Windows 平台
 
@@ -167,4 +171,3 @@
 	</tr>
 </tbody>
 </table>
-
