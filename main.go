@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/gitHusband/goutils/jsonkeys"
 )
 
 // 目标：将 JSON 数据转换成 markdown 的表格
@@ -134,6 +136,16 @@ var maxColspan int
 // 保存每一行的所有列
 var trs trSlice
 
+// 字段排序方式
+// 选项
+// default: 默认按 JSON 原本字段顺序
+// asc: 按字母从小到大排序
+// desc: 按字母从大到小排序
+var sortType string
+
+// 保存JSON 原本的字段排序结果
+var sortKeysDefault jsonkeys.JsonKeysMap
+
 // 默认输入的用户JSON 文件
 const defaultJsonFile = "./info.json"
 
@@ -145,13 +157,30 @@ func main() {
 
 	var inputPath = flag.String("in", defaultJsonFile, "输入JSON文件的路径")
 	var outputPath = flag.String("out", defaultMarkdownFile, "输出Markdown文件的路径")
+	var sort = flag.String("sort", "default", "key 排序方式")
 	flag.Parse()
+
+	switch *sort {
+	case "default", "asc", "desc":
+		sortType = *sort
+	default:
+		fmt.Printf("sort option can only be set to default, asc, desc\n")
+		return
+	}
 
 	jsonFile := *inputPath
 	markdownFile := *outputPath
 	if markdownFile == "" {
 		markdownFile = getFullFilePathWithoutSuffix(jsonFile) + ".md"
 	}
+
+	// 保存JSON 原本的字段排序结果
+	keys, err := jsonkeys.ParseFromFile(jsonFile)
+	if err != nil {
+		fmt.Printf("Parse defaul json keys error: %v\n", err)
+		return
+	}
+	sortKeysDefault = keys
 
 	// 从文件中读取JSON
 	jsonData = readJsonFile(jsonFile)
@@ -290,10 +319,28 @@ func getEmptyInterfaceKeys(x interface{}) stringSlice {
 }
 
 // 获取map 所有的key，并按字母排序
-func getSortMapKeys(m map[string]interface{}) stringSlice {
+func getSortMapKeys(m map[string]interface{}, keyPath string) stringSlice {
 	keys := getMapKeys(m)
-	// 对切片进行排序
-	sort.Strings(keys)
+
+	switch sortType {
+	case "default":
+		if keyPath == "" {
+			keyPath = jsonkeys.RootPathName
+		} else {
+			keyPath = jsonkeys.RootPathName + "." + keyPath
+		}
+		key, err := sortKeysDefault.Get(keyPath)
+		if err != nil {
+			panic(err)
+		}
+		keys = stringSlice(key)
+	case "desc":
+		// 对切片进行递减排序
+		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
+	case "asc":
+		// 对切片进行递增排序
+		sort.Strings(keys)
+	}
 
 	return keys
 }
@@ -405,7 +452,7 @@ func setTableTr(parentJsonData map[string]interface{}, keyPath string, colspan i
 	// fmt.Printf("当前JOSN data: %#v\n", jsonData)
 
 	// 获取当前遍历JSON的所有 key
-	childKeys := getSortMapKeys(jsonData)
+	childKeys := getSortMapKeys(jsonData, keyPath)
 	// fmt.Printf("$ childKeys: %v\n", childKeys)
 
 	// 获取当前遍历JSON的所有 key 的长度，用于遍历
@@ -476,7 +523,7 @@ func setTableTr(parentJsonData map[string]interface{}, keyPath string, colspan i
 			tr = append(tr, td)
 
 			// 递归获取key 值内的所有的第一个子元素生成参数名<td>, 最后一个key值生成详情<td>
-			firstColumns := getFirstColumns(jsonDataValue.(map[string]interface{}), currentColspan)
+			firstColumns := getFirstColumns(jsonDataValue.(map[string]interface{}), currentColspan, currentKeyPath)
 			tr = append(tr, firstColumns...)
 			appendTrs(tr)
 
@@ -546,11 +593,11 @@ func getRowspan(jsonData map[string]interface{}) int {
 }
 
 // 递归获取当前字段内第一个字段的td 的集合
-func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
+func getFirstColumns(jsonData map[string]interface{}, colspan int, keyPath string) tdSlice {
 	var tds tdSlice
 	var td string
 
-	keys := getSortMapKeys(jsonData)
+	keys := getSortMapKeys(jsonData, keyPath)
 	firstKey := keys[0]
 
 	jsonDataValue := jsonData[firstKey]
@@ -576,7 +623,7 @@ func getFirstColumns(jsonData map[string]interface{}, colspan int) tdSlice {
 		td = createTableTdHtml(firstKey, 1, getRowspan(jsonDataValue.(map[string]interface{})))
 		tds = append(tds, td)
 
-		nextTd := getFirstColumns(jsonDataValue.(map[string]interface{}), colspan-1)
+		nextTd := getFirstColumns(jsonDataValue.(map[string]interface{}), colspan-1, keyPath)
 		tds = append(tds, nextTd...)
 	}
 
