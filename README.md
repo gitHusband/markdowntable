@@ -19,6 +19,19 @@
 ```
 > 支持 MacOS, Linux 和 Windows 平台
 
+**注：**
+
+Markdown 按JSON原本字段顺序排序的实现？
+
+[jsonkeys - 获取 JSON key 的先后顺序](https://github.com/gitHusband/goutils/tree/master/jsonkeys)
+```
+当使用GO 标准库 `encoding/json` 解析动态JSON 的时候，我们将结果解析为 `map[string]interface{}`。
+
+而 GO `map` 类型的key 是无序的，也就是说你不能确定JSON key 的先后顺序。
+
+如果你需要确定 JSON key 的顺序，可以使用 `jsonkeys` 包。
+```
+
 ## 2. 如何设置字段的内容？
 ### 2.1 以字符串结尾
 如果一个字段的值不再包含子元素，值是 字符串，那么字符串就是字段的内容，插入到表格最后一列
